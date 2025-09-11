@@ -1,23 +1,32 @@
-// A simple function that takes user input and uses it in a hypothetical command.
-function searchProducts(userInput) {
-  // SAST tools will flag this line because the 'userInput' variable
-  // is a potential source of untrusted data (a "taint source")
-  // and it's being concatenated directly into a command string (a "sink").
-  // This pattern could be exploited if this were a real OS command or SQL query.
+const express = require('express');
+const { exec } = require('child_process');
+const app = express();
+
+// A vulnerable endpoint that directly uses user input in a command.
+// This is a classic example of a Command Injection vulnerability.
+app.get('/search', (req, res) => {
+  // SAST tool identifies 'req.query.filename' as an UNTRUSTED SOURCE of data.
+  // It is a "taint source".
+  const filename = req.query.filename;
+
+  // The 'exec' function from 'child_process' is a KNOWN DANGEROUS SINK.
+  // The SAST tool will trace the flow of data from the source to this sink.
   //
-  // In a real application, an attacker could inject malicious commands here.
-  // For example, if this were an OS command, a user could input "query; rm -rf /"
-  // to run a second, malicious command.
-  const command = `find . -name "${userInput}"`;
-
-  // The actual dangerous operation is not performed here for safety.
-  // The goal is just to show the pattern that a SAST tool would detect.
-  console.log('SAST tool would detect a vulnerability here:', command);
-  return command;
-}
-
-// Example usage that you could test with your SAST tool
-// to see if it flags the 'searchProducts' function.
-// The input is a hardcoded string here to be safe.
-const untrustedData = 'test_item.txt';
-searchProducts(untrustedData);
+  // Because the 'filename' variable is used directly in the 'exec' command,
+  // it creates a direct path for a vulnerability.
+  //
+  // An attacker could send a request like:
+  // /search?filename=test.txt;rm%20-rf%20/
+  // The tool sees this and flags it as a Command Injection vulnerability.
+  exec(`grep "${filename}" *`, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Error: ${error.message}`);
+      return res.status(500).send('An error occurred.');
+    }
+    if (stderr) {
+      console.error(`Stderr: ${stderr}`);
+      return res.status(500).send('An error occurred.');
+    }
+    res.send(stdout);
+  });
+});
